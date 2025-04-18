@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arcade Game - Pac-Man</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Open Sans', sans-serif;
+      background: #000;
+      color: white;
+    }
+    header {
+      background: url('arcadeheader.jpg') center/cover no-repeat;
+      height: 40vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      text-shadow: 1px 1px 5px black;
+    }
+    header h1 {
+      font-size: 3rem;
+      margin: 0;
+    }
+    header p {
+      font-size: 1.2rem;
+    }
+    main {
+      text-align: center;
+      padding: 10px;
+      height: calc(60vh - 60px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    canvas {
+      background-color: black;
+      border: 2px solid #444;
+      transform: scale(1.25);
+      transform-origin: top center;
+    }
+    .instructions {
+      font-size: 1.1rem;
+      margin: 10px 0;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 1rem;
+      margin-top: 15px;
+      cursor: pointer;
+      background-color: white;
+      color: black;
+      border: none;
+      border-radius: 4px;
+    }
+    .modal {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #222;
+      color: #fff;
+      padding: 30px 50px;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(255,255,255,0.4);
+      text-align: center;
+      display: none;
+      z-index: 10;
+    }
+    .modal.show {
+      display: block;
+    }
+    footer {
+      background-color: #222;
+      color: white;
+      text-align: center;
+      padding: 15px 10px;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="index.html" style="position: absolute; top: 10px; left: 20px; color: white; font-size: 1rem; text-decoration: none; background-color: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 4px;">← Back to Home</a>
+    <h1>Arcade Mode</h1>
+    <p>Play Pac-Man!</p>
+  </header>
+  <main>
+    <div class="instructions">
+      Use Arrow Keys to Move. Avoid ghosts. Eat all the pellets!
+    </div>
+    <canvas id="gameCanvas" width="448" height="224"></canvas>
+    
+    <div id="modal" class="modal"></div>
+  </main>
+  <footer>
+    &copy; 2025 Arcade Classics | Designed by YourName
+  </footer>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const modal = document.getElementById("modal");
+    const scale = 16;
+    const cols = 28;
+    const rows = 14;
+
+    let map = [];
+    let pacman;
+    let ghosts = [];
+    let gameRunning = false;
+    let pacmanAngle = 0;
+    let mouthOpen = true;
+
+    const directions = [
+      { dx: 1, dy: 0 },
+      { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 },
+      { dx: 0, dy: -1 },
+    ];
+
+    function createMap() {
+      const layout = [
+        "0000000000000000000000000000",
+        "0111111111111111111111111110",
+        "0100100011000000001100010010",
+        "0100100011011111101100010010",
+        "0110100011000110001100010110",
+        "0111111111111111111111111110",
+        "0100100011000000001100010010",
+        "0100100011011111101100010010",
+        "0110100011000110001100010110",
+        "0111111111111111111111111110",
+        "0100100011000000001100010010",
+        "0100100011011111101100010010",
+        "0111111111111111111111111110",
+        "0000000000000000000000000000"
+      ];
+
+      map = [];
+      for (let y = 0; y < layout.length; y++) {
+        for (let x = 0; x < layout[y].length; x++) {
+          map[y * cols + x] = parseInt(layout[y][x]);
+        }
+      }
+    }
+
+    function drawGhost(x, y, color) {
+      const px = x * scale;
+      const py = y * scale;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(px, py + scale);
+      ctx.arc(px + scale / 2, py + scale / 2, scale / 2, Math.PI, 0);
+      ctx.lineTo(px + scale, py + scale);
+      ctx.lineTo(px, py + scale);
+      ctx.fill();
+
+      ctx.fillStyle = "white";
+      ctx.beginPath();
+      ctx.arc(px + 5, py + 7, 3, 0, Math.PI * 2);
+      ctx.arc(px + 11, py + 7, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "blue";
+      ctx.beginPath();
+      ctx.arc(px + 5, py + 7, 1.5, 0, Math.PI * 2);
+      ctx.arc(px + 11, py + 7, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawPacman() {
+      const px = pacman.x * scale + scale / 2;
+      const py = pacman.y * scale + scale / 2;
+      ctx.fillStyle = "yellow";
+      ctx.beginPath();
+      ctx.arc(px, py, scale / 2 - 1, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (mouthOpen) {
+        ctx.fillStyle = "black";
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.arc(px, py, scale / 2 - 1, pacmanAngle - 0.3, pacmanAngle + 0.3, false);
+        ctx.closePath();
+        ctx.fill();
+      }
+      mouthOpen = !mouthOpen;
+    }
+
+    function drawGame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          drawTile(x, y, map[y * cols + x]);
+        }
+      }
+      drawPacman();
+      for (let ghost of ghosts) {
+        drawGhost(ghost.x, ghost.y, ghost.color);
+      }
+    }
+
+    function drawTile(x, y, value) {
+      if (value === 0) {
+        ctx.fillStyle = "#00008B";
+        ctx.fillRect(x * scale, y * scale, scale, scale);
+      } else if (value === 1) {
+        ctx.fillStyle = "white";
+        ctx.beginPath();
+        ctx.arc(x * scale + scale / 2, y * scale + scale / 2, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function movePacman() {
+      let newX = pacman.x + pacman.dx;
+      let newY = pacman.y + pacman.dy;
+      if (map[newY * cols + newX] !== 0) {
+        pacman.x = newX;
+        pacman.y = newY;
+        if (map[pacman.y * cols + pacman.x] === 1) {
+          map[pacman.y * cols + pacman.x] = 2;
+        }
+      }
+    }
+
+    function moveGhosts() {
+      for (let ghost of ghosts) {
+        const validMoves = directions.filter(dir => {
+          let nx = ghost.x + dir.dx;
+          let ny = ghost.y + dir.dy;
+          return map[ny * cols + nx] !== 0;
+        });
+
+        if (Math.random() < 0.5 || !ghost.dx && !ghost.dy) {
+          const bestMoves = validMoves.sort((a, b) => {
+            let distA = Math.hypot((ghost.x + a.dx) - pacman.x, (ghost.y + a.dy) - pacman.y);
+            let distB = Math.hypot((ghost.x + b.dx) - pacman.x, (ghost.y + b.dy) - pacman.y);
+            return distA - distB;
+          });
+          const choice = Math.random() < 0.5 ? bestMoves[0] : bestMoves[Math.floor(Math.random() * bestMoves.length)];
+          ghost.dx = choice.dx;
+          ghost.dy = choice.dy;
+        }
+
+        let nextX = ghost.x + ghost.dx;
+        let nextY = ghost.y + ghost.dy;
+        if (map[nextY * cols + nextX] !== 0) {
+          ghost.x = nextX;
+          ghost.y = nextY;
+        }
+
+        if (ghost.x === pacman.x && ghost.y === pacman.y) {
+          gameRunning = false;
+          showModal("Game Over! You were caught by a ghost.");
+        }
+      }
+    }
+
+    function checkWin() {
+      if (!map.includes(1)) {
+        gameRunning = false;
+        showModal("You Win! All pellets collected.");
+      }
+    }
+
+    function update() {
+      if (!gameRunning) return;
+      movePacman();
+      moveGhosts();
+      drawGame();
+      checkWin();
+    }
+
+    function showModal(message) {
+      modal.innerHTML = `<p>${message}</p><button onclick=\"startGame()\">Restart Game</button>`;
+      modal.classList.add("show");
+    }
+
+    document.addEventListener("keydown", e => {
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        e.preventDefault();
+      }
+      if (e.key === "ArrowUp") pacman.dx = 0, pacman.dy = -1, pacmanAngle = -0.5 * Math.PI;
+      else if (e.key === "ArrowDown") pacman.dx = 0, pacman.dy = 1, pacmanAngle = 0.5 * Math.PI;
+      else if (e.key === "ArrowLeft") pacman.dx = -1, pacman.dy = 0, pacmanAngle = Math.PI;
+      else if (e.key === "ArrowRight") pacman.dx = 1, pacman.dy = 0, pacmanAngle = 0;
+    });
+
+    function startGame() {
+      modal.classList.remove("show");
+      createMap();
+      pacman = { x: 1, y: 3, dx: 0, dy: 0 };
+      pacmanAngle = 0;
+      ghosts = [
+        { x: 13, y: 3, dx: 0, dy: 0, color: "red" },
+        { x: 14, y: 3, dx: 0, dy: 0, color: "pink" },
+        { x: 13, y: 4, dx: 0, dy: 0, color: "cyan" }
+      ];
+      gameRunning = true;
+    }
+
+    setInterval(update, 200);
+    startGame();
+  </script>
+</body>
+</html>
